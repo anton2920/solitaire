@@ -4,17 +4,55 @@ import (
 	"fmt"
 	"os"
 	"runtime/pprof"
-	"unsafe"
 
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/gr"
 	"github.com/anton2920/gofa/log"
-	"github.com/anton2920/gofa/slices"
 )
 
 var BuildMode string
 
 var Debug bool
+
+type State int
+
+const (
+	MainMenu State = iota
+	GameSolitaire
+	GameFreeCell
+)
+
+func DrawMainMenu(ui *gui.UI, state *State) {
+	if ui.Button(gui.ID(uintptr(1)), "Play Solitaire") {
+		*state = GameSolitaire
+	}
+
+	if ui.Button(gui.ID(uintptr(2)), "Play FreeCell") {
+		*state = GameFreeCell
+	}
+}
+
+func DrawSolitaire(window *gui.Window, renderer *gui.Renderer, ui *gui.UI, state *State) {
+	const text = "Playing Solitaire..."
+	textWidth := ui.Font.TextWidth(text)
+	textHeight := ui.Font.TextHeight(text)
+	renderer.GraphText(text, ui.Font, window.Width/2-textWidth/2, window.Height/2-textHeight/2, gr.ColorWhite)
+
+	if ui.Button(gui.ID(uintptr(1)), "Back") {
+		*state = MainMenu
+	}
+}
+
+func DrawFreeCell(window *gui.Window, renderer *gui.Renderer, ui *gui.UI, state *State) {
+	const text = "Playing FreeCell..."
+	textWidth := ui.Font.TextWidth(text)
+	textHeight := ui.Font.TextHeight(text)
+	renderer.GraphText(text, ui.Font, window.Width/2-textWidth/2, window.Height/2-textHeight/2, gr.ColorWhite)
+
+	if ui.Button(gui.ID(uintptr(1)), "Back") {
+		*state = MainMenu
+	}
+}
 
 func main() {
 	switch BuildMode {
@@ -46,7 +84,9 @@ func main() {
 
 	events := make([]gui.Event, 64)
 
+	var state State
 	quit := false
+
 	for !quit {
 		for window.HasEvents() {
 			n, err := window.GetEvents(events)
@@ -74,26 +114,19 @@ func main() {
 		}
 
 		renderer.Clear(gr.ColorBlack)
-
 		ui.Begin()
 
-		for i := 1; i <= 10; i++ {
-			var n int
-
-			buffer := make([]byte, 32)
-			n += copy(buffer, "Press me!!! ")
-			n += slices.PutInt(buffer[n:], i)
-			text := unsafe.String(&buffer[0], n)
-
-			if ui.Button(gui.ID(uintptr(i)), text) {
-				log.Infof("Button %d pressed!!!", i)
-			}
+		switch state {
+		case MainMenu:
+			DrawMainMenu(ui, &state)
+		case GameSolitaire:
+			DrawSolitaire(window, renderer, ui, &state)
+		case GameFreeCell:
+			DrawFreeCell(window, renderer, ui, &state)
 		}
 
 		ui.End()
-
 		renderer.Present()
-
 		window.SyncFPS(60)
 	}
 }

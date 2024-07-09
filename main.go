@@ -1,18 +1,24 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"os"
 	"runtime/pprof"
+	"unsafe"
 
 	"github.com/anton2920/gofa/gui"
+	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
 	"github.com/anton2920/gofa/log"
+	"github.com/anton2920/gofa/slices"
+
+	"freecell"
 )
-
-var BuildMode string
-
-var Debug bool
 
 type State int
 
@@ -22,36 +28,64 @@ const (
 	GameFreeCell
 )
 
-func DrawMainMenu(ui *gui.UI, state *State) {
+const Title = "Classic solitaire collection"
+
+//go:embed assets/assets.png
+var AssetsData []byte
+
+var BuildMode string
+var Debug bool
+
+func DrawMainMenu(window *gui.Window, renderer gui.Renderer, ui *gui.UI, state *State) {
+	renderer.Clear(color.Black)
+
 	if ui.Button(gui.ID(uintptr(1)), "Play Solitaire") {
+		window.SetTitle(Title + ": Solitaire")
 		*state = GameSolitaire
 	}
 
 	if ui.Button(gui.ID(uintptr(2)), "Play FreeCell") {
+		// N := rand.Int() % 1000001
+		const N = 17330
+
+		var n int
+		buffer := make([]byte, 128)
+		n += copy(buffer[n:], Title)
+		n += copy(buffer[n:], ": FreeCell Game #")
+		n += slices.PutInt(buffer[n:], N)
+		title := unsafe.String(&buffer[0], n)
+		window.SetTitle(title)
+
+		freecell.NewGame(N)
 		*state = GameFreeCell
 	}
 }
 
-func DrawSolitaire(window *gui.Window, renderer *gui.Renderer, ui *gui.UI, state *State) {
-	const text = "Playing Solitaire..."
-	textWidth := ui.Font.TextWidth(text)
-	textHeight := ui.Font.TextHeight(text)
-	renderer.GraphText(text, ui.Font, window.Width/2-textWidth/2, window.Height/2-textHeight/2, gr.ColorWhite)
-
+func DrawBackButton(window *gui.Window, ui *gui.UI, state *State) {
+	ui.Layout.CurrentY = window.Height - 50
 	if ui.Button(gui.ID(uintptr(1)), "Back") {
+		window.SetTitle(Title)
 		*state = MainMenu
 	}
 }
 
-func DrawFreeCell(window *gui.Window, renderer *gui.Renderer, ui *gui.UI, state *State) {
-	const text = "Playing FreeCell..."
+func DrawSolitaire(window *gui.Window, renderer gui.Renderer, ui *gui.UI, state *State) {
+	const text = "Playing Solitaire..."
 	textWidth := ui.Font.TextWidth(text)
 	textHeight := ui.Font.TextHeight(text)
-	renderer.GraphText(text, ui.Font, window.Width/2-textWidth/2, window.Height/2-textHeight/2, gr.ColorWhite)
+	renderer.RenderText(text, ui.Font, window.Width/2-textWidth/2, window.Height/2-textHeight/2, color.White)
 
-	if ui.Button(gui.ID(uintptr(1)), "Back") {
-		*state = MainMenu
+	DrawBackButton(window, ui, state)
+}
+
+func Image2RGBA(src image.Image) *image.RGBA {
+	if dst, ok := src.(*image.RGBA); ok {
+		return dst
 	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, src.Bounds().Dx(), src.Bounds().Dy()))
+	draw.Draw(dst, dst.Bounds(), src, src.Bounds().Min, draw.Src)
+	return dst
 }
 
 func main() {
@@ -73,7 +107,13 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	window, err := gui.NewWindow("Classic solitaire collection", 0, 0, 800, 600, gui.WindowResizable)
+	assetsImage, err := png.Decode(bytes.NewReader(AssetsData))
+	if err != nil {
+		log.Fatalf("Failed to decode assets data: %v", err)
+	}
+	assets := gr.NewPixmapFromImage(Image2RGBA(assetsImage))
+
+	window, err := gui.NewWindow("Classic solitaire collection", 632, 452, 0)
 	if err != nil {
 		log.Fatalf("Failed to open new window: %v", err)
 	}
@@ -83,7 +123,6 @@ func main() {
 	ui := gui.NewUI(renderer)
 
 	events := make([]gui.Event, 64)
-
 	var state State
 	quit := false
 
@@ -113,19 +152,20 @@ func main() {
 			}
 		}
 
-		renderer.Clear(gr.ColorBlack)
 		ui.Begin()
 
 		switch state {
 		case MainMenu:
-			DrawMainMenu(ui, &state)
+			DrawMainMenu(window, renderer, ui, &state)
 		case GameSolitaire:
 			DrawSolitaire(window, renderer, ui, &state)
 		case GameFreeCell:
-			DrawFreeCell(window, renderer, ui, &state)
+			freecell.Main(window, renderer, ui, &assets)
+			DrawBackButton(window, ui, &state)
 		}
 
 		ui.End()
+
 		renderer.Present()
 		window.SyncFPS(60)
 	}

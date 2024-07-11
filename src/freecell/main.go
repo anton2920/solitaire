@@ -18,7 +18,7 @@ const (
 type CardSuit int16
 
 const (
-	Blank    CardSuit = iota
+	Blank CardSuit = iota
 	Clubs
 	Diamonds
 	Hearts
@@ -30,6 +30,14 @@ type CardState byte
 const (
 	Normal CardState = iota
 	Pressed
+)
+
+type CursorState byte
+
+const (
+	DefaultCursor CursorState = iota
+	UpArrow
+	DownArrow
 )
 
 type Card struct {
@@ -49,11 +57,14 @@ const (
 )
 
 const (
+	GameWidth  = 632
+	GameHeight = 452
+
 	MenuHeight = 20
 
-	TableLeft = 7
-	TableTop  = 126
-	TableCols = 8
+	TableLeft    = 7
+	TableTop     = 126
+	TableColumns = 8
 
 	CardWidth    = 71
 	CardHeight   = 96
@@ -74,7 +85,8 @@ var (
 
 	FaceDirection Direction
 
-	SelectedCard *Card
+	SelectedCard  *Card
+	CurrentCursor CursorState
 
 	Seed int32
 )
@@ -109,8 +121,8 @@ func Deal(N int) {
 	for k := 0; k < len(Table); k++ {
 		card := &Table[k]
 
-		i := k % TableCols
-		j := k / TableCols
+		i := k % TableColumns
+		j := k / TableColumns
 		card.X = int16(TableLeft + i*(TableLeft+CardWidth))
 		card.Y = int16(TableTop + j*18)
 	}
@@ -118,8 +130,19 @@ func Deal(N int) {
 
 func NewGame(N int) {
 	SelectedCard = nil
-	clear(Freecells[:])
-	clear(Goals[:])
+
+	if (len(Freecells) != 4) && (len(Freecells) != len(Goals)) {
+		panic("number of freecells/goals must be 4")
+	}
+	for i := 0; i < len(Freecells); i++ {
+		Freecells[i].Suit = Blank
+		Freecells[i].X = int16(i * PlaceholderWidth)
+		Freecells[i].Y = PlaceholderTop
+
+		Goals[len(Goals)-i-1].Suit = Blank
+		Goals[len(Goals)-i-1].X = int16(GameWidth - (i+1)*PlaceholderWidth)
+		Goals[len(Goals)-i-1].Y = PlaceholderTop
+	}
 
 	State = GameRunning
 	Deal(N)
@@ -142,8 +165,112 @@ func FindBottomCard(needle *Card) *Card {
 	return bottomCard
 }
 
+func AllowedToMove() int {
+	var freecells, columns int
+	for i := 0; i < len(Freecells); i++ {
+		if Freecells[i].Suit == Blank {
+			freecells++
+		}
+	}
+	for i := 0; i < TableColumns; i++ {
+		columnRect := TableColumnRect(i)
+		if FindBottomCard(&Card{X: int16(columnRect.X0), Y: int16(columnRect.Y0)}) == nil {
+			columns++
+		}
+	}
+	return (freecells + 1) * (1 << columns)
+}
+
+func PowerMove(src *Card, dst *Card, pressed bool) bool {
+	if (!CardOnTable(src)) || (!CardOnTable(dst)) {
+		return false
+	}
+
+	var canPowerMove bool
+	cards := make([]*Card, 0, 52)
+	card := src
+	for i := 0; (i < AllowedToMove()) && (card != nil); i++ {
+		cards = append(cards, card)
+		if CanMove(card, dst) {
+			canPowerMove = true
+			break
+		}
+		next := FindCardAbove(card)
+		if !CanMove(card, next) {
+			break
+		}
+		card = next
+	}
+	if canPowerMove {
+		if pressed {
+			dstY := dst.Y
+			for i := len(cards) - 1; i >= 0; i-- {
+				card := cards[i]
+				card.X = dst.X
+				card.Y = dstY + CardYPadding
+				dstY += CardYPadding
+			}
+		}
+	}
+	return canPowerMove
+}
+
+func PowerMoveOnTable(window *gui.Window, src *Card, idx int, pressed bool) bool {
+	if !CardOnTable(src) {
+		return false
+	}
+
+	cards := make([]*Card, 0, 52)
+	card := src
+	for i := 0; (i < AllowedToMove()) && (card != nil); i++ {
+		cards = append(cards, card)
+		next := FindCardAbove(card)
+		if !CanMove(card, next) {
+			break
+		}
+		card = next
+	}
+	if pressed {
+		/*
+			dialog, err := window.NewSubwindow("Power move", 100, 100, 100, 100, 0)
+			if err != nil {
+				panic("failed to create window")
+			}
+			renderer := gui.NewSoftwareRenderer(dialog)
+			ui := gui.NewUI(renderer)
+			_ = ui
+
+			renderer.Clear(color.Grey(200))
+		*/
+
+		dstX := int16(TableColumnRect(idx).X0)
+		dstY := int16(TableTop)
+		for i := len(cards) - 1; i >= 0; i-- {
+			card := cards[i]
+			card.X = dstX
+			card.Y = dstY
+			dstY += CardYPadding
+		}
+	}
+	return len(cards) > 1
+
+}
+
 func CanMove(src, dst *Card) bool {
-	return (src.Red() != dst.Red()) && (dst.Value-src.Value == 1)
+	return (src != nil) && (dst != nil) && (src.Red() != dst.Red()) && (dst.Value-src.Value == 1)
+}
+
+func CanMove2Goal(src, dst *Card) bool {
+	return ((src.Suit == dst.Suit) && (src.Value-dst.Value == 1)) || ((src.Value == 1) && (dst.Suit == Blank))
+}
+
+func FindCardAbove(card *Card) *Card {
+	for i := 0; i < len(Table); i++ {
+		if (Table[i].X == card.X) && (Table[i].Y == card.Y-CardYPadding) {
+			return &Table[i]
+		}
+	}
+	return nil
 }
 
 func FindCardOnTable(card *Card) int {
@@ -167,19 +294,32 @@ func RemoveFromFreecell(card *Card) {
 	for i := 0; i < len(Freecells); i++ {
 		if &Freecells[i] == card {
 			card.Suit = Blank
+			card.X = int16(i * PlaceholderWidth)
+			card.Y = PlaceholderTop
 			break
 		}
 	}
 }
 
 func SetSelectedCard(card *Card) {
-	SelectedCard = card
-	SelectedCard.State = Pressed
+	if card != nil {
+		SelectedCard = card
+		SelectedCard.State = Pressed
+	}
 }
 
 func RemoveSelection() {
 	SelectedCard.State = Normal
 	SelectedCard = nil
+}
+
+func MoveCard(src, dst *Card) {
+	rect := CardRect(dst)
+
+	*dst = *src
+	dst.State = Normal
+	dst.X = int16(rect.X0)
+	dst.Y = int16(rect.Y0)
 }
 
 func DrawMenu(window *gui.Window, renderer gui.Renderer, ui *gui.UI) {
@@ -196,7 +336,7 @@ func DrawRectWithShadow(renderer gui.Renderer, x0, y0, x1, y1 int, pclr, sclr co
 func DrawBackground(window *gui.Window, renderer gui.Renderer) {
 	renderer.Clear(color.RGB(0, 127, 0))
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < len(Freecells); i++ {
 		const width = PlaceholderWidth - 1
 		const height = PlaceholderHeight - 1
 
@@ -210,11 +350,15 @@ func DrawBackground(window *gui.Window, renderer gui.Renderer) {
 	DrawRectWithShadow(renderer, 297, 38, 334, 75, color.Green, color.Black)
 }
 
-func DrawFace(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) {
+func DrawFace(window *gui.Window, renderer gui.Renderer, assets *gr.Pixmap) {
 	const x = 298
 	const y = 39
 	const width = 36
 	renderer.RenderPixmap(assets.Sub(320+int(width*FaceDirection), 453, 355+int(width*FaceDirection), 488), x, y)
+}
+
+func DrawGiantFace(window *gui.Window, renderer gui.Renderer, assets *gr.Pixmap) {
+	renderer.RenderPixmap(assets.Sub(0, 453, 320, 773), 10, 126)
 }
 
 func GetCardPixmap(assets *gr.Pixmap, card *Card) gr.Pixmap {
@@ -253,138 +397,189 @@ func DrawCards(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr
 	}
 }
 
-func HandleMouseInput(window *gui.Window, renderer gui.Renderer, ui *gui.UI) {
-	const debug = true
-	const alphaMask = 0x7FFFFFFF
-
-	mouseRect := gui.Rect{ui.MouseX, ui.MouseY, ui.MouseX, ui.MouseY}
-
-	if SelectedCard != nil {
-		if debug {
-			renderer.RenderSolidRectWH(int(SelectedCard.X), int(SelectedCard.Y), CardWidth, CardHeight, color.Red&alphaMask)
-		}
+func DrawCursor(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) {
+	switch CurrentCursor {
+	case DefaultCursor:
+		window.EnableCursor()
+	case UpArrow:
+		window.DisableCursor()
+		old := assets.Alpha
+		assets.Alpha = gr.Alpha8bit
+		renderer.RenderPixmap(assets.Sub(406, 453, 415, 472), ui.MouseX, ui.MouseY)
+		assets.Alpha = old
+	case DownArrow:
+		window.DisableCursor()
+		old := assets.Alpha
+		assets.Alpha = gr.Alpha8bit
+		renderer.RenderPixmap(assets.Sub(392, 453, 406, 480), ui.MouseX, ui.MouseY-27)
+		assets.Alpha = old
 	}
+}
+
+func CardRect(card *Card) gui.Rect {
+	return gui.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
+}
+
+func TableColumnRect(idx int) gui.Rect {
+	return gui.Rect{TableLeft + idx*(TableLeft+CardWidth), TableTop, TableLeft + idx*(TableLeft+CardWidth) + CardWidth - 1, GameHeight - 1}
+}
+
+func HandleMouseInput(window *gui.Window, ui *gui.UI) {
+	mouse := gui.Rect{ui.MouseX, ui.MouseY, ui.MouseX, ui.MouseY}
+	CurrentCursor = DefaultCursor
 
 	/* Handle face turn. */
-	faceLeftRect := gui.Rect{0, 20, 297, 116}
-	faceRightRect := gui.Rect{335, 20, 632, 116}
-	if faceLeftRect.Contains(mouseRect) {
+	faceLeftRect := gui.Rect{0, 20, 284, 116}
+	faceRightRect := gui.Rect{348, 20, 632, 116}
+	if faceLeftRect.Contains(mouse) {
 		FaceDirection = Left
-	} else if faceRightRect.Contains(mouseRect) {
+	} else if faceRightRect.Contains(mouse) {
 		FaceDirection = Right
 	}
 
-	/* Handle freecell moves. */
 	for i := 0; i < len(Freecells); i++ {
 		freecell := &Freecells[i]
-		freecellRect := gui.Rect{i * PlaceholderWidth, PlaceholderTop, (i+1)*PlaceholderWidth - 1, PlaceholderTop + PlaceholderHeight - 1}
 
-		if ui.ButtonLogic(gui.ID(freecell), freecellRect.Contains(mouseRect)) {
-			if SelectedCard == nil {
+		if CardRect(freecell).Contains(mouse) {
+			pressed := ui.ButtonLogicDown(gui.ID(freecell), true)
+
+			if (pressed) && (SelectedCard == nil) && (freecell.Suit != Blank) {
 				SetSelectedCard(freecell)
-			} else if SelectedCard == freecell {
+			} else if (pressed) && (SelectedCard == freecell) {
 				RemoveSelection()
-			} else if freecell.Suit == Blank {
-				*freecell = *SelectedCard
-				freecell.State = Normal
-				freecell.X = int16(freecellRect.X0)
-				freecell.Y = int16(freecellRect.Y0)
-
-				RemoveFromTable(SelectedCard)
-				RemoveSelection()
-			}
-			return
-		} else if ui.IsHot {
-			if debug {
-				renderer.RenderSolidRect(freecellRect.X0, freecellRect.Y0, freecellRect.X1, freecellRect.Y1, color.Lite(color.Green)&alphaMask)
-			}
-			return
-		}
-	}
-
-	/* Handle goal moves. */
-	for i := 0; i < len(Goals); i++ {
-		goal := &Goals[i]
-		goalRect := gui.Rect{window.Width - (i+1)*PlaceholderWidth, PlaceholderTop, window.Width - i*PlaceholderWidth - 1, PlaceholderTop + PlaceholderHeight - 1}
-
-		if ui.ButtonLogic(gui.ID(goal), goalRect.Contains(mouseRect)) {
-			if SelectedCard != nil {
-				if ((SelectedCard.Suit == goal.Suit) && (SelectedCard.Value-goal.Value == 1)) || ((SelectedCard.Value == 1) && (goal.Suit == Blank)) {
-					*goal = *SelectedCard
-					goal.State = Normal
-					goal.X = int16(goalRect.X0)
-					goal.Y = int16(goalRect.Y0)
-
+			} else if (SelectedCard != nil) && (freecell.Suit == Blank) {
+				CurrentCursor = UpArrow
+				if pressed {
+					MoveCard(SelectedCard, freecell)
 					RemoveFromFreecell(SelectedCard)
 					RemoveFromTable(SelectedCard)
 					RemoveSelection()
 				}
 			}
 			return
-		} else if ui.IsHot {
-			if debug {
-				renderer.RenderSolidRect(goalRect.X0, goalRect.Y0, goalRect.X1, goalRect.Y1, color.Lite(color.Red)&alphaMask)
-			}
-			return
 		}
 	}
 
-	/* Handle table cards select and move. */
-	for i := 0; i < len(Table); i++ {
-		card := &Table[i]
-		cardRect := gui.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
-		if ui.ButtonLogic(gui.ID(card), cardRect.Contains(mouseRect)) {
-			bottomCard := FindBottomCard(card)
+	for i := 0; i < len(Goals); i++ {
+		goal := &Goals[i]
 
-			if SelectedCard == nil {
-				SetSelectedCard(bottomCard)
-			} else if bottomCard == SelectedCard {
-				RemoveSelection()
-			} else {
-				if bottomCard != nil {
-					if CanMove(SelectedCard, bottomCard) {
-						SelectedCard.State = Normal
-						SelectedCard.X = bottomCard.X
-						SelectedCard.Y = bottomCard.Y + CardYPadding
-						if !CardOnTable(SelectedCard) {
-							Table = append(Table, *SelectedCard)
-							RemoveFromFreecell(SelectedCard)
-						}
-						RemoveSelection()
-					}
-				}
-			}
-			return
-		} else if ui.IsHot {
-			if debug {
-				renderer.RenderSolidRect(cardRect.X0, cardRect.Y0, cardRect.X1, cardRect.Y1, color.Lite(color.Blue)&alphaMask)
-			}
-			return
-		}
-	}
-
-	/* Handle moves on empty table. */
-	for i := 0; i < TableCols; i++ {
-		columnRect := gui.Rect{TableLeft + i*(TableLeft+CardWidth), TableTop, TableLeft + i*(TableLeft+CardWidth) + CardWidth - 1, window.Height - 1}
-		if FindBottomCard(&Card{X: int16(columnRect.X0), Y: int16(columnRect.Y0)}) == nil {
-			if ui.ButtonLogic(gui.ID(uintptr(100+i)), columnRect.Contains(mouseRect)) {
-				if SelectedCard != nil {
-					SelectedCard.State = Normal
-					SelectedCard.X = int16(columnRect.X0)
-					SelectedCard.Y = int16(columnRect.Y0)
-					if !CardOnTable(SelectedCard) {
-						Table = append(Table, *SelectedCard)
-						RemoveFromFreecell(SelectedCard)
-					}
+		if CardRect(goal).Contains(mouse) {
+			if (SelectedCard != nil) && (CanMove2Goal(SelectedCard, goal)) {
+				CurrentCursor = UpArrow
+				if ui.ButtonLogicDown(gui.ID(goal), true) {
+					MoveCard(SelectedCard, goal)
+					RemoveFromFreecell(SelectedCard)
+					RemoveFromTable(SelectedCard)
 					RemoveSelection()
 				}
-				return
-			} else if ui.IsHot {
-				if debug {
-					renderer.RenderSolidRect(columnRect.X0, columnRect.Y0, columnRect.X1, columnRect.Y1, color.Blue&alphaMask)
-				}
-				return
 			}
+			return
+		}
+	}
+
+	for i := 0; i < TableColumns; i++ {
+		columnRect := TableColumnRect(i)
+
+		if columnRect.Contains(mouse) {
+			bottomCard := FindBottomCard(&Card{X: int16(columnRect.X0), Y: int16(columnRect.Y0)})
+
+			overRect := columnRect
+			if bottomCard != nil {
+				overRect.Y1 = CardRect(bottomCard).Y1
+			}
+			over := overRect.Contains(mouse)
+			pressed := ui.ButtonLogicDown(gui.ID(uintptr(TableLeft+i)), over)
+
+			if (pressed) && (SelectedCard == nil) {
+				SetSelectedCard(bottomCard)
+			} else if (pressed) && (SelectedCard == bottomCard) {
+				RemoveSelection()
+			} else if (over) && (SelectedCard != nil) {
+				if bottomCard != nil {
+					if PowerMove(SelectedCard, bottomCard, pressed) {
+						CurrentCursor = DownArrow
+						if pressed {
+							RemoveSelection()
+						}
+					} else if CanMove(SelectedCard, bottomCard) {
+						CurrentCursor = DownArrow
+						if pressed {
+							SelectedCard.State = Normal
+							SelectedCard.X = bottomCard.X
+							SelectedCard.Y = bottomCard.Y + CardYPadding
+							if !CardOnTable(SelectedCard) {
+								Table = append(Table, *SelectedCard)
+								RemoveFromFreecell(SelectedCard)
+							}
+							RemoveSelection()
+						}
+					}
+				} else {
+
+					if PowerMoveOnTable(window, SelectedCard, i, pressed) {
+						CurrentCursor = DownArrow
+						if pressed {
+							RemoveSelection()
+						}
+					} else {
+						CurrentCursor = DownArrow
+						if pressed {
+							SelectedCard.State = Normal
+							SelectedCard.X = int16(columnRect.X0)
+							SelectedCard.Y = int16(columnRect.Y0)
+							if !CardOnTable(SelectedCard) {
+								Table = append(Table, *SelectedCard)
+								RemoveFromFreecell(SelectedCard)
+							}
+							RemoveSelection()
+						}
+					}
+				}
+			}
+			return
+		}
+	}
+}
+
+func RemoveCardIfUseless(card *Card) bool {
+	if (card != nil) && (card.Suit != Blank) {
+		useless := true
+
+		for i := 0; i < len(Table); i++ {
+			if CanMove(&Table[i], card) {
+				useless = false
+				break
+			}
+		}
+		if useless {
+			for i := 0; i < len(Goals); i++ {
+				goal := &Goals[i]
+
+				if CanMove2Goal(card, goal) {
+					MoveCard(card, goal)
+					RemoveFromFreecell(card)
+					RemoveFromTable(card)
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func Autoplay() {
+	removed := true
+	for removed {
+		removed = false
+		for i := 0; i < TableColumns; i++ {
+			columnRect := TableColumnRect(i)
+			card := FindBottomCard(&Card{X: int16(columnRect.X0), Y: int16(columnRect.Y0)})
+			removed = RemoveCardIfUseless(card) || removed
+		}
+
+		for i := 0; i < len(Freecells); i++ {
+			removed = RemoveCardIfUseless(&Freecells[i]) || removed
 		}
 	}
 }
@@ -399,13 +594,39 @@ func SortCards() {
 	}
 }
 
+func GameWon() bool {
+	var kings int
+	for i := 0; i < len(Goals); i++ {
+		if Goals[i].Value == 13 {
+			kings++
+		}
+	}
+	return kings == 4
+}
+
 func Main(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) {
 	DrawBackground(window, renderer)
-	DrawFace(window, renderer, ui, assets)
 	DrawCards(window, renderer, ui, assets)
 	DrawMenu(window, renderer, ui)
 
-	HandleMouseInput(window, renderer, ui)
+	switch State {
+	case GameNothing:
+		DrawFace(window, renderer, assets)
+	case GameRunning:
+		DrawFace(window, renderer, assets)
 
-	SortCards()
+		HandleMouseInput(window, ui)
+		DrawCursor(window, renderer, ui, assets)
+
+		Autoplay()
+		SortCards()
+
+		if GameWon() {
+			CurrentCursor = DefaultCursor
+			State = GameEnd
+		}
+	case GameEnd:
+		DrawGiantFace(window, renderer, assets)
+		DrawCursor(window, renderer, ui, assets)
+	}
 }

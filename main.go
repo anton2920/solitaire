@@ -111,9 +111,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to decode assets data: %v", err)
 	}
-	assets := gr.NewPixmapFromImage(Image2RGBA(assetsImage))
+	assets := gr.NewPixmapFromImage(Image2RGBA(assetsImage), gr.AlphaOpaque)
 
-	window, err := gui.NewWindow("Classic solitaire collection", 632, 452, 0)
+	window, err := gui.NewWindow("Classic solitaire collection", 632, 452, gui.WindowResizable)
 	if err != nil {
 		log.Fatalf("Failed to open new window: %v", err)
 	}
@@ -136,6 +136,7 @@ func main() {
 
 			for i := 0; i < n; i++ {
 				event := &events[i]
+				// log.Debugf("Event %#v", event)
 
 				switch event.Type {
 				case gui.DestroyEvent:

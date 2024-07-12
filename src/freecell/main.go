@@ -439,10 +439,10 @@ func HandleMouseInput(window *gui.Window, ui *gui.UI) {
 
 	for i := 0; i < len(Freecells); i++ {
 		freecell := &Freecells[i]
+		over := CardRect(freecell).Contains(mouse)
+		pressed := ui.ButtonLogicDown(gui.ID(freecell), over)
 
-		if CardRect(freecell).Contains(mouse) {
-			pressed := ui.ButtonLogicDown(gui.ID(freecell), true)
-
+		if over {
 			if (pressed) && (SelectedCard == nil) && (freecell.Suit != Blank) {
 				SetSelectedCard(freecell)
 			} else if (pressed) && (SelectedCard == freecell) {
@@ -456,87 +456,80 @@ func HandleMouseInput(window *gui.Window, ui *gui.UI) {
 					RemoveSelection()
 				}
 			}
-			return
 		}
 	}
 
 	for i := 0; i < len(Goals); i++ {
 		goal := &Goals[i]
+		over := CardRect(goal).Contains(mouse)
+		pressed := ui.ButtonLogicDown(gui.ID(goal), over)
 
-		if CardRect(goal).Contains(mouse) {
-			if (SelectedCard != nil) && (CanMove2Goal(SelectedCard, goal)) {
-				CurrentCursor = UpArrow
-				if ui.ButtonLogicDown(gui.ID(goal), true) {
-					MoveCard(SelectedCard, goal)
-					RemoveFromFreecell(SelectedCard)
-					RemoveFromTable(SelectedCard)
-					RemoveSelection()
-				}
+		if (over) && (SelectedCard != nil) && (CanMove2Goal(SelectedCard, goal)) {
+			CurrentCursor = UpArrow
+			if pressed {
+				MoveCard(SelectedCard, goal)
+				RemoveFromFreecell(SelectedCard)
+				RemoveFromTable(SelectedCard)
+				RemoveSelection()
 			}
-			return
 		}
 	}
 
 	for i := 0; i < TableColumns; i++ {
 		columnRect := TableColumnRect(i)
+		bottomCard := FindBottomCard(&Card{X: int16(columnRect.X0), Y: int16(columnRect.Y0)})
 
-		if columnRect.Contains(mouse) {
-			bottomCard := FindBottomCard(&Card{X: int16(columnRect.X0), Y: int16(columnRect.Y0)})
+		overRect := columnRect
+		if bottomCard != nil {
+			overRect.Y1 = CardRect(bottomCard).Y1
+		}
+		over := overRect.Contains(mouse)
+		pressed := ui.ButtonLogicDown(gui.ID(uintptr(TableLeft+i)), over)
 
-			overRect := columnRect
+		if (pressed) && (SelectedCard == nil) {
+			SetSelectedCard(bottomCard)
+		} else if (pressed) && (SelectedCard == bottomCard) {
+			RemoveSelection()
+		} else if (over) && (SelectedCard != nil) {
 			if bottomCard != nil {
-				overRect.Y1 = CardRect(bottomCard).Y1
-			}
-			over := overRect.Contains(mouse)
-			pressed := ui.ButtonLogicDown(gui.ID(uintptr(TableLeft+i)), over)
-
-			if (pressed) && (SelectedCard == nil) {
-				SetSelectedCard(bottomCard)
-			} else if (pressed) && (SelectedCard == bottomCard) {
-				RemoveSelection()
-			} else if (over) && (SelectedCard != nil) {
-				if bottomCard != nil {
-					if PowerMove(SelectedCard, bottomCard, pressed) {
-						CurrentCursor = DownArrow
-						if pressed {
-							RemoveSelection()
+				if PowerMove(SelectedCard, bottomCard, pressed) {
+					CurrentCursor = DownArrow
+					if pressed {
+						RemoveSelection()
+					}
+				} else if CanMove(SelectedCard, bottomCard) {
+					CurrentCursor = DownArrow
+					if pressed {
+						SelectedCard.State = Normal
+						SelectedCard.X = bottomCard.X
+						SelectedCard.Y = bottomCard.Y + CardYPadding
+						if !CardOnTable(SelectedCard) {
+							Table = append(Table, *SelectedCard)
+							RemoveFromFreecell(SelectedCard)
 						}
-					} else if CanMove(SelectedCard, bottomCard) {
-						CurrentCursor = DownArrow
-						if pressed {
-							SelectedCard.State = Normal
-							SelectedCard.X = bottomCard.X
-							SelectedCard.Y = bottomCard.Y + CardYPadding
-							if !CardOnTable(SelectedCard) {
-								Table = append(Table, *SelectedCard)
-								RemoveFromFreecell(SelectedCard)
-							}
-							RemoveSelection()
-						}
+						RemoveSelection()
+					}
+				}
+			} else {
+				if PowerMoveOnTable(window, SelectedCard, i, pressed) {
+					CurrentCursor = DownArrow
+					if pressed {
+						RemoveSelection()
 					}
 				} else {
-
-					if PowerMoveOnTable(window, SelectedCard, i, pressed) {
-						CurrentCursor = DownArrow
-						if pressed {
-							RemoveSelection()
+					CurrentCursor = DownArrow
+					if pressed {
+						SelectedCard.State = Normal
+						SelectedCard.X = int16(columnRect.X0)
+						SelectedCard.Y = int16(columnRect.Y0)
+						if !CardOnTable(SelectedCard) {
+							Table = append(Table, *SelectedCard)
+							RemoveFromFreecell(SelectedCard)
 						}
-					} else {
-						CurrentCursor = DownArrow
-						if pressed {
-							SelectedCard.State = Normal
-							SelectedCard.X = int16(columnRect.X0)
-							SelectedCard.Y = int16(columnRect.Y0)
-							if !CardOnTable(SelectedCard) {
-								Table = append(Table, *SelectedCard)
-								RemoveFromFreecell(SelectedCard)
-							}
-							RemoveSelection()
-						}
+						RemoveSelection()
 					}
 				}
 			}
-			return
 		}
 	}
 }

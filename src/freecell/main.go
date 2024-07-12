@@ -88,6 +88,8 @@ var (
 	SelectedCard  *Card
 	CurrentCursor CursorState
 
+	AutoplayAllowed bool
+
 	Seed int32
 )
 
@@ -129,6 +131,7 @@ func Deal(N int) {
 }
 
 func NewGame(N int) {
+	AutoplayAllowed = false
 	SelectedCard = nil
 
 	if (len(Freecells) != 4) && (len(Freecells) != len(Goals)) {
@@ -165,7 +168,7 @@ func FindBottomCard(needle *Card) *Card {
 	return bottomCard
 }
 
-func AllowedToMove() int {
+func AllowedToMove(table bool) int {
 	var freecells, columns int
 	for i := 0; i < len(Freecells); i++ {
 		if Freecells[i].Suit == Blank {
@@ -178,6 +181,9 @@ func AllowedToMove() int {
 			columns++
 		}
 	}
+	if table {
+		columns--
+	}
 	return (freecells + 1) * (1 << columns)
 }
 
@@ -189,7 +195,7 @@ func PowerMove(src *Card, dst *Card, pressed bool) bool {
 	var canPowerMove bool
 	cards := make([]*Card, 0, 52)
 	card := src
-	for i := 0; (i < AllowedToMove()) && (card != nil); i++ {
+	for i := 0; (i < AllowedToMove(false)) && (card != nil); i++ {
 		cards = append(cards, card)
 		if CanMove(card, dst) {
 			canPowerMove = true
@@ -215,14 +221,14 @@ func PowerMove(src *Card, dst *Card, pressed bool) bool {
 	return canPowerMove
 }
 
-func PowerMoveOnTable(window *gui.Window, src *Card, idx int, pressed bool) bool {
+func PowerMoveOnTable(src *Card, idx int, pressed bool) bool {
 	if !CardOnTable(src) {
 		return false
 	}
 
 	cards := make([]*Card, 0, 52)
 	card := src
-	for i := 0; (i < AllowedToMove()) && (card != nil); i++ {
+	for i := 0; (i < AllowedToMove(true)) && (card != nil); i++ {
 		cards = append(cards, card)
 		next := FindCardAbove(card)
 		if !CanMove(card, next) {
@@ -231,18 +237,6 @@ func PowerMoveOnTable(window *gui.Window, src *Card, idx int, pressed bool) bool
 		card = next
 	}
 	if pressed {
-		/*
-			dialog, err := window.NewSubwindow("Power move", 100, 100, 100, 100, 0)
-			if err != nil {
-				panic("failed to create window")
-			}
-			renderer := gui.NewSoftwareRenderer(dialog)
-			ui := gui.NewUI(renderer)
-			_ = ui
-
-			renderer.Clear(color.Grey(200))
-		*/
-
 		dstX := int16(TableColumnRect(idx).X0)
 		dstY := int16(TableTop)
 		for i := len(cards) - 1; i >= 0; i-- {
@@ -311,6 +305,7 @@ func SetSelectedCard(card *Card) {
 func RemoveSelection() {
 	SelectedCard.State = Normal
 	SelectedCard = nil
+	AutoplayAllowed = true
 }
 
 func MoveCard(src, dst *Card) {
@@ -400,15 +395,15 @@ func DrawCards(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr
 func DrawCursor(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) {
 	switch CurrentCursor {
 	case DefaultCursor:
-		window.EnableCursor()
+		window.ShowCursor()
 	case UpArrow:
-		window.DisableCursor()
+		window.HideCursor()
 		old := assets.Alpha
 		assets.Alpha = gr.Alpha8bit
 		renderer.RenderPixmap(assets.Sub(406, 453, 415, 472), ui.MouseX, ui.MouseY)
 		assets.Alpha = old
 	case DownArrow:
-		window.DisableCursor()
+		window.HideCursor()
 		old := assets.Alpha
 		assets.Alpha = gr.Alpha8bit
 		renderer.RenderPixmap(assets.Sub(392, 453, 406, 480), ui.MouseX, ui.MouseY-27)
@@ -424,9 +419,8 @@ func TableColumnRect(idx int) gui.Rect {
 	return gui.Rect{TableLeft + idx*(TableLeft+CardWidth), TableTop, TableLeft + idx*(TableLeft+CardWidth) + CardWidth - 1, GameHeight - 1}
 }
 
-func HandleMouseInput(window *gui.Window, ui *gui.UI) {
+func HandleFaceInput(ui *gui.UI) {
 	mouse := gui.Rect{ui.MouseX, ui.MouseY, ui.MouseX, ui.MouseY}
-	CurrentCursor = DefaultCursor
 
 	/* Handle face turn. */
 	faceLeftRect := gui.Rect{0, 20, 284, 116}
@@ -436,6 +430,11 @@ func HandleMouseInput(window *gui.Window, ui *gui.UI) {
 	} else if faceRightRect.Contains(mouse) {
 		FaceDirection = Right
 	}
+}
+
+func HandleCardsInput(ui *gui.UI) {
+	mouse := gui.Rect{ui.MouseX, ui.MouseY, ui.MouseX, ui.MouseY}
+	CurrentCursor = DefaultCursor
 
 	for i := 0; i < len(Freecells); i++ {
 		freecell := &Freecells[i]
@@ -511,7 +510,7 @@ func HandleMouseInput(window *gui.Window, ui *gui.UI) {
 					}
 				}
 			} else {
-				if PowerMoveOnTable(window, SelectedCard, i, pressed) {
+				if PowerMoveOnTable(SelectedCard, i, pressed) {
 					CurrentCursor = DownArrow
 					if pressed {
 						RemoveSelection()
@@ -539,7 +538,13 @@ func RemoveCardIfUseless(card *Card) bool {
 		useless := true
 
 		for i := 0; i < len(Table); i++ {
-			if CanMove(&Table[i], card) {
+			if (Table[i].Value > 1) && (CanMove(&Table[i], card)) {
+				useless = false
+				break
+			}
+		}
+		for i := 0; i < len(Freecells); i++ {
+			if (Freecells[i].Value > 1) && (CanMove(&Freecells[i], card)) {
 				useless = false
 				break
 			}
@@ -562,7 +567,7 @@ func RemoveCardIfUseless(card *Card) bool {
 }
 
 func Autoplay() {
-	removed := true
+	removed := true && AutoplayAllowed
 	for removed {
 		removed = false
 		for i := 0; i < TableColumns; i++ {
@@ -573,6 +578,23 @@ func Autoplay() {
 
 		for i := 0; i < len(Freecells); i++ {
 			removed = RemoveCardIfUseless(&Freecells[i]) || removed
+		}
+	}
+}
+
+func AutoplayWin() {
+	for len(Table) > 0 {
+		for i := 0; i < len(Table); i++ {
+			card := &Table[i]
+			for j := 0; j < len(Goals); j++ {
+				goal := &Goals[j]
+
+				if CanMove2Goal(card, goal) {
+					MoveCard(card, goal)
+					RemoveFromFreecell(card)
+					RemoveFromTable(card)
+				}
+			}
 		}
 	}
 }
@@ -600,26 +622,28 @@ func GameWon() bool {
 func Main(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) {
 	DrawBackground(window, renderer)
 	DrawCards(window, renderer, ui, assets)
-	DrawMenu(window, renderer, ui)
+	DrawFace(window, renderer, assets)
 
 	switch State {
 	case GameNothing:
-		DrawFace(window, renderer, assets)
 	case GameRunning:
-		DrawFace(window, renderer, assets)
-
-		HandleMouseInput(window, ui)
+		HandleCardsInput(ui)
 		DrawCursor(window, renderer, ui, assets)
 
 		Autoplay()
 		SortCards()
 
-		if GameWon() {
-			CurrentCursor = DefaultCursor
+		if (GameWon()) || (ui.MiddleDown) {
+			AutoplayWin()
 			State = GameEnd
+			CurrentCursor = DefaultCursor
+			DrawCursor(window, renderer, ui, assets)
+			ui.ClearActive()
 		}
 	case GameEnd:
 		DrawGiantFace(window, renderer, assets)
-		DrawCursor(window, renderer, ui, assets)
 	}
+	HandleFaceInput(ui)
+
+	DrawMenu(window, renderer, ui)
 }

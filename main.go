@@ -46,7 +46,8 @@ func DrawMainMenu(window *gui.Window, renderer gui.Renderer, ui *gui.UI, state *
 
 	if ui.Button(gui.ID(uintptr(2)), "Play FreeCell") {
 		// N := rand.Int() % 1000001
-		const N = 17330
+		// const N = 17330
+		const N = 473846
 
 		var n int
 		buffer := make([]byte, 128)

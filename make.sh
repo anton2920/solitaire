@@ -23,7 +23,7 @@ printv()
 
 # NOTE(anton2920): disable Go 1.11+ package management.
 GO111MODULE=off; export GO111MODULE
-GOPATH=`go env GOPATH`:`pwd`; export GOPATH
+GOPATH=`go env GOPATH`; export GOPATH
 
 CGO_ENABLED=1; export CGO_ENABLED
 

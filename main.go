@@ -9,21 +9,17 @@ import (
 	"image/png"
 	"os"
 	"runtime/pprof"
-	"unsafe"
 
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
 	"github.com/anton2920/gofa/log"
-	"github.com/anton2920/gofa/slices"
-
-	"freecell"
 )
 
-type State int
+type GameType int
 
 const (
-	MainMenu State = iota
+	GameNone GameType = iota
 	GameSolitaire
 	GameFreeCell
 )
@@ -36,47 +32,33 @@ var AssetsData []byte
 var BuildMode string
 var Debug bool
 
-func DrawMainMenu(window *gui.Window, renderer gui.Renderer, ui *gui.UI, state *State) {
-	renderer.Clear(color.Black)
+var (
+	CurrentGame  GameType
+	FreeCellGame FreeCell
+)
 
-	if ui.Button(gui.ID(uintptr(1)), "Play Solitaire") {
-		window.SetTitle(Title + ": Solitaire")
-		*state = GameSolitaire
-	}
-
-	if ui.Button(gui.ID(uintptr(2)), "Play FreeCell") {
-		// N := rand.Int() % 1000001
-		// const N = 17330
-		const N = 473846
-
-		var n int
-		buffer := make([]byte, 128)
-		n += copy(buffer[n:], Title)
-		n += copy(buffer[n:], ": FreeCell Game #")
-		n += slices.PutInt(buffer[n:], N)
-		title := unsafe.String(&buffer[0], n)
-		window.SetTitle(title)
-
-		freecell.NewGame(N)
-		*state = GameFreeCell
-	}
+func DrawRectWithShadow(renderer gui.Renderer, x0, y0, x1, y1 int, pclr, sclr color.Color) {
+	renderer.RenderLine(x0, y0, x1-1, y0, pclr)
+	renderer.RenderLine(x0, y0, x0, y1-1, pclr)
+	renderer.RenderLine(x0+1, y1, x1, y1, sclr)
+	renderer.RenderLine(x1, y0+1, x1, y1, sclr)
 }
 
-func DrawBackButton(window *gui.Window, ui *gui.UI, state *State) {
+func DrawBackButton(window *gui.Window, ui *gui.UI) {
 	ui.Layout.CurrentY = window.Height - 50
-	if ui.Button(gui.ID(uintptr(1)), "Back") {
+	if ui.Button(gui.ID(&CurrentGame), "Back") {
 		window.SetTitle(Title)
-		*state = MainMenu
+		CurrentGame = GameNone
 	}
 }
 
-func DrawSolitaire(window *gui.Window, renderer gui.Renderer, ui *gui.UI, state *State) {
+func DrawSolitaire(window *gui.Window, renderer gui.Renderer, ui *gui.UI) {
 	const text = "Playing Solitaire..."
 	textWidth := ui.Font.TextWidth(text)
 	textHeight := ui.Font.TextHeight(text)
 	renderer.RenderText(text, ui.Font, window.Width/2-textWidth/2, window.Height/2-textHeight/2, color.White)
 
-	DrawBackButton(window, ui, state)
+	DrawBackButton(window, ui)
 }
 
 func Image2RGBA(src image.Image) *image.RGBA {
@@ -124,7 +106,6 @@ func main() {
 	ui := gui.NewUI(renderer)
 
 	events := make([]gui.Event, 64)
-	var state State
 	quit := false
 
 	for !quit {
@@ -156,14 +137,24 @@ func main() {
 
 		ui.Begin()
 
-		switch state {
-		case MainMenu:
-			DrawMainMenu(window, renderer, ui, &state)
+		switch CurrentGame {
+		case GameNone:
+			renderer.Clear(color.Black)
+			if ui.Button(gui.ID2(gui.ID(&CurrentGame)), "Play Solitaire") {
+				window.SetTitle(Title + ": Solitaire")
+				CurrentGame = GameSolitaire
+			}
+			if ui.Button(gui.ID3(gui.ID(&CurrentGame)), "Play FreeCell") {
+				FreeCellGame = NewFreeCell(window, renderer, ui, &assets)
+				CurrentGame = GameFreeCell
+				// const N = 17330
+				FreeCellGame.NewRandomGame()
+			}
 		case GameSolitaire:
-			DrawSolitaire(window, renderer, ui, &state)
+			DrawSolitaire(window, renderer, ui)
 		case GameFreeCell:
-			freecell.Main(window, renderer, ui, &assets)
-			DrawBackButton(window, ui, &state)
+			FreeCellGame.UpdateAndRender()
+			DrawBackButton(window, ui)
 		}
 
 		ui.End()

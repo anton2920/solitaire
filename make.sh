@@ -31,7 +31,7 @@ STARTTIME=`date +%s`
 
 case $1 in
 	'' | debug)
-		run go build -o $PROJECT -pgo off -gcflags='all=-N -l -d=checkptr=0' -ldflags='-X main.BuildMode=Debug'
+		run go build -o $PROJECT -pgo off -gcflags='all=-N -l' -ldflags='-X main.BuildMode=Debug' -tags gofadebug
 		;;
 	clean)
 		run rm -f $PROJECT $PROJECT.s $PROJECT.esc $PROJECT.test c.out cpu.pprof cpu.png mem.pprof mem.png
@@ -61,6 +61,9 @@ case $1 in
 		run go tool cover -html=c.out
 		run rm -f c.out
 		;;
+	gofa/prof)
+		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=gofa/prof" -tags gofaprof
+		;;
 	disas | disasm | disassembly)
 		printv go build -gcflags="-S"
 		go build -o $PROJECT -gcflags="-S" >$PROJECT.s 2>&1
@@ -78,14 +81,18 @@ case $1 in
 		;;
 	objdump)
 		go build -o $PROJECT
-		printvv go tool objdump -S -s ^main\. $PROJECT
-		go tool objdump -S -s ^main\. $PROJECT >$PROJECT.s
+		printv go tool objdump -S -s ^main\. $PROJECT
+		go tool objdump -S $PROJECT >$PROJECT.s
+		;;
+	png)
+		printv go tool pprof -png masters-cpu.pprof
+		go tool pprof -png masters-cpu.pprof >cpu.png
 		;;
 	profiling)
-		run go build -o $PROJECT -gcflags="-d=checkptr=0" -ldflags="-s -w" -ldflags='-X main.BuildMode=Profiling'
+		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=Profiling"
 		;;
 	release)
-		run go build -o $PROJECT -gcflags="-d=checkptr=0" -ldflags="-s -w" -ldflags="-s -w" -ldflags='-X main.BuildMode=Release'
+		run go build -o $PROJECT -gcflags="-d=checkptr=0" -ldflags="-s -w"
 		;;
 	test)
 		run $0 $VERBOSITYFLAGS vet
@@ -94,10 +101,10 @@ case $1 in
 	test-race-cover)
 		CGO_ENABLED=1; export CGO_ENABLED
 		run $0 $VERBOSITYFLAGS vet
-		run go test $VERBOSITYFLAGS -c -o $PROJECT.test -vet=off -race -cover -gcflags='all=-N -l -d=checkptr=0'
+		run go test $VERBOSITYFLAGS -c -o $PROJECT.test -vet=off -race -cover -gcflags='all=-N -l'
 		;;
 	tracing)
-		run go build -o $PROJECT -gcflags="-d=checkptr=0" -ldflags="-s -w" -ldflags='-X main.BuildMode=Tracing'
+		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=Tracing"
 		;;
 	vet)
 		run go vet $VERBOSITYFLAGS -asmdecl -assign -atomic -bools -buildtag -cgocall -copylocks -directive -errorsas -framepointer -httpresponse -ifaceassert -loopclosure -lostcancel -nilfunc -printf -shift -sigchanyzer -slog -stdmethods -stringintconv -structtag -testinggoroutine -tests -timeformat -unmarshal -unreachable -unusedresult

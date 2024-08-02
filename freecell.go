@@ -7,6 +7,7 @@ import (
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
+	"github.com/anton2920/gofa/prof"
 	"github.com/anton2920/gofa/slices"
 	"github.com/anton2920/gofa/util"
 )
@@ -151,6 +152,8 @@ func (game *FreeCell) NewSelectedGame(N int) {
 }
 
 func (game *FreeCell) FindBottomCard(needle *Card) *Card {
+	defer prof.End(prof.Begin(""))
+
 	var bottomCard *Card
 	var bottomY int16
 
@@ -168,6 +171,8 @@ func (game *FreeCell) FindBottomCard(needle *Card) *Card {
 }
 
 func (game *FreeCell) AllowedToMove(onTable bool) int {
+	defer prof.End(prof.Begin(""))
+
 	var freecells, columns int
 	for i := 0; i < len(game.FreeCells); i++ {
 		if game.FreeCells[i].Suit == Blank {
@@ -187,6 +192,8 @@ func (game *FreeCell) AllowedToMove(onTable bool) int {
 }
 
 func (game *FreeCell) PowerMove(src *Card, dst *Card, pressed bool) bool {
+	defer prof.End(prof.Begin(""))
+
 	if (!game.CardOnTable(src)) || (!game.CardOnTable(dst)) {
 		return false
 	}
@@ -221,6 +228,8 @@ func (game *FreeCell) PowerMove(src *Card, dst *Card, pressed bool) bool {
 }
 
 func (game *FreeCell) PowerMoveOnTable(src *Card, idx int, pressed bool) bool {
+	defer prof.End(prof.Begin(""))
+
 	if !game.CardOnTable(src) {
 		return false
 	}
@@ -250,6 +259,8 @@ func (game *FreeCell) PowerMoveOnTable(src *Card, idx int, pressed bool) bool {
 }
 
 func (game *FreeCell) FindCardAbove(card *Card) *Card {
+	defer prof.End(prof.Begin(""))
+
 	for i := 0; i < len(game.Table); i++ {
 		if (game.Table[i].X == card.X) && (game.Table[i].Y == card.Y-CardYPadding) {
 			return &game.Table[i]
@@ -311,10 +322,14 @@ func (game *FreeCell) MoveCard(src, dst *Card) {
 }
 
 func (game *FreeCell) DrawMenu() {
+	defer prof.End(prof.Begin(""))
+
 	game.Renderer.RenderSolidRectWH(0, 0, game.Width, game.MenuHeight, color.RGB(0xD4, 0xD0, 0xC8))
 }
 
 func (game *FreeCell) DrawBackground() {
+	defer prof.End(prof.Begin(""))
+
 	game.Renderer.Clear(color.RGB(0, 127, 0))
 
 	for i := 0; i < len(game.FreeCells); i++ {
@@ -329,6 +344,8 @@ func (game *FreeCell) DrawBackground() {
 }
 
 func (game *FreeCell) DrawFace() {
+	defer prof.End(prof.Begin(""))
+
 	const x = 298
 	const y = 39
 	const width = 36
@@ -336,10 +353,15 @@ func (game *FreeCell) DrawFace() {
 }
 
 func (game *FreeCell) DrawGiantFace() {
+	defer prof.End(prof.Begin(""))
+
 	game.Renderer.RenderPixmap(game.Assets.Sub(0, 453, 320, 773), 10, 126)
 }
 
+/* TODO(anton2929): store it with card? */
 func (game *FreeCell) GetCardPixmap(card *Card) gr.Pixmap {
+	defer prof.End(prof.Begin(""))
+
 	const x = 632
 	const y = 0
 
@@ -350,12 +372,16 @@ func (game *FreeCell) GetCardPixmap(card *Card) gr.Pixmap {
 }
 
 func (game *FreeCell) DrawCard(card *Card) {
+	defer prof.End(prof.Begin(""))
+
 	if card.Suit != Blank {
 		game.Renderer.RenderPixmap(game.GetCardPixmap(card), int(card.X), int(card.Y))
 	}
 }
 
 func (game *FreeCell) DrawCards() {
+	defer prof.End(prof.Begin(""))
+
 	const marginLeft = 7
 	const marginTop = 126
 
@@ -376,6 +402,8 @@ func (game *FreeCell) DrawCards() {
 }
 
 func (game *FreeCell) DrawCursor() {
+	defer prof.End(prof.Begin(""))
+
 	switch game.Cursor {
 	case CursorDefault:
 		game.Window.ShowCursor()
@@ -395,14 +423,20 @@ func (game *FreeCell) DrawCursor() {
 }
 
 func (game *FreeCell) CardRect(card *Card) gui.Rect {
+	defer prof.End(prof.Begin(""))
+
 	return gui.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
 }
 
 func (game *FreeCell) TableColumnRect(idx int) gui.Rect {
+	defer prof.End(prof.Begin(""))
+
 	return gui.Rect{game.TableLeft + idx*(game.TableLeft+CardWidth), game.TableTop, game.TableLeft + idx*(game.TableLeft+CardWidth) + CardWidth - 1, game.Window.Height - 1}
 }
 
 func (game *FreeCell) HandleFaceInput() {
+	defer prof.End(prof.Begin(""))
+
 	mouse := gui.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
 
 	/* Handle face turn. */
@@ -416,6 +450,8 @@ func (game *FreeCell) HandleFaceInput() {
 }
 
 func (game *FreeCell) HandleCardsInput() {
+	defer prof.End(prof.Begin(""))
+
 	mouse := gui.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
 	game.Cursor = CursorDefault
 
@@ -517,6 +553,8 @@ func (game *FreeCell) HandleCardsInput() {
 }
 
 func (game *FreeCell) RemoveCardIfUseless(card *Card) bool {
+	defer prof.End(prof.Begin(""))
+
 	if (card != nil) && (card.Suit != Blank) {
 		useless := true
 
@@ -550,6 +588,8 @@ func (game *FreeCell) RemoveCardIfUseless(card *Card) bool {
 }
 
 func (game *FreeCell) Autoplay() {
+	defer prof.End(prof.Begin(""))
+
 	removed := true && game.AutoplayAllowed
 	for removed {
 		removed = false
@@ -566,6 +606,8 @@ func (game *FreeCell) Autoplay() {
 }
 
 func (game *FreeCell) SortCards() {
+	defer prof.End(prof.Begin(""))
+
 	for i := 1; i < len(game.Table); i++ {
 		for j := 0; j < i; j++ {
 			if game.Table[j].Y > game.Table[i].Y {
@@ -576,6 +618,8 @@ func (game *FreeCell) SortCards() {
 }
 
 func (game *FreeCell) GameWon() bool {
+	defer prof.End(prof.Begin(""))
+
 	var kings int
 	for i := 0; i < len(game.Goals); i++ {
 		if game.Goals[i].Value == King {
@@ -586,6 +630,8 @@ func (game *FreeCell) GameWon() bool {
 }
 
 func (game *FreeCell) UpdateAndRender() {
+	defer prof.End(prof.Begin(""))
+
 	game.HandleFaceInput()
 
 	if game.UI.MiddleDown {

@@ -14,7 +14,7 @@ import (
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
 	"github.com/anton2920/gofa/log"
-	"github.com/anton2920/gofa/prof"
+	"github.com/anton2920/gofa/trace"
 )
 
 type GameType int
@@ -46,7 +46,7 @@ func DrawRectWithShadow(renderer gui.Renderer, x0, y0, x1, y1 int, pclr, sclr co
 }
 
 func DrawBackButton(window *gui.Window, ui *gui.UI) {
-	defer prof.End(prof.Begin(""))
+	defer trace.End(trace.Begin(""))
 
 	ui.Layout.CurrentY = window.Height - 50
 	if ui.Button(gui.ID(&CurrentGame), "Back") {
@@ -77,8 +77,7 @@ func Image2RGBA(src image.Image) *image.RGBA {
 func main() {
 	switch BuildMode {
 	default:
-		log.Fatalf("Build mode %q is not recognized", BuildMode)
-	case "Release":
+		BuildMode = "Release"
 	case "Debug":
 		Debug = true
 		log.SetLevel(log.LevelDebug)
@@ -91,9 +90,9 @@ func main() {
 
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
-	case "gofa/prof":
-		prof.BeginProfile()
-		defer prof.EndAndPrintProfile()
+	case "Tracing":
+		trace.BeginProfile()
+		defer trace.EndAndPrintProfile()
 	}
 
 	assetsImage, err := png.Decode(bytes.NewReader(AssetsData))

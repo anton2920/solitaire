@@ -61,9 +61,6 @@ case $1 in
 		run go tool cover -html=c.out
 		run rm -f c.out
 		;;
-	gofa/prof)
-		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=gofa/prof" -tags gofaprof
-		;;
 	disas | disasm | disassembly)
 		printv go build -gcflags="-S"
 		go build -o $PROJECT -gcflags="-S" >$PROJECT.s 2>&1
@@ -104,7 +101,7 @@ case $1 in
 		run go test $VERBOSITYFLAGS -c -o $PROJECT.test -vet=off -race -cover -gcflags='all=-N -l'
 		;;
 	tracing)
-		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=Tracing"
+		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=Tracing" -tags gofatrace
 		;;
 	vet)
 		run go vet $VERBOSITYFLAGS -asmdecl -assign -atomic -bools -buildtag -cgocall -copylocks -directive -errorsas -framepointer -httpresponse -ifaceassert -loopclosure -lostcancel -nilfunc -printf -shift -sigchanyzer -slog -stdmethods -stringintconv -structtag -testinggoroutine -tests -timeformat -unmarshal -unreachable -unusedresult

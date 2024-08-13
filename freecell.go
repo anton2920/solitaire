@@ -1,8 +1,7 @@
 package main
 
 import (
-	"math/rand/v2"
-	"unsafe"
+	"math/rand"
 
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
@@ -137,7 +136,7 @@ func (game *FreeCell) Deal(N int) {
 	n += copy(buffer[n:], Title)
 	n += copy(buffer[n:], ": FreeCell Game #")
 	n += slices.PutInt(buffer[n:], N)
-	title := unsafe.String(&buffer[0], n)
+	title := util.Slice2String(buffer[:n])
 	game.Window.SetTitle(title)
 
 	game.State = GameRunning
@@ -173,7 +172,7 @@ func (game *FreeCell) FindBottomCard(needle *Card) *Card {
 func (game *FreeCell) AllowedToMove(onTable bool) int {
 	defer trace.End(trace.Begin(""))
 
-	var freecells, columns int
+	var freecells, columns uint
 	for i := 0; i < len(game.FreeCells); i++ {
 		if game.FreeCells[i].Suit == Blank {
 			freecells++
@@ -188,7 +187,7 @@ func (game *FreeCell) AllowedToMove(onTable bool) int {
 	if onTable {
 		columns--
 	}
-	return (freecells + 1) * (1 << columns)
+	return int((freecells + 1) * (1 << columns))
 }
 
 func (game *FreeCell) PowerMove(src *Card, dst *Card, pressed bool) bool {
@@ -282,8 +281,18 @@ func (game *FreeCell) CardOnTable(card *Card) bool {
 	return game.FindCardOnTable(card) != -1
 }
 
+func RemoveCardAtIndex(vs []Card, i int) []Card {
+	if (len(vs) == 0) || (i < 0) || (i >= len(vs)) {
+		return vs
+	}
+	if i < len(vs)-1 {
+		copy(vs[i:], vs[i+1:])
+	}
+	return vs[:len(vs)-1]
+}
+
 func (game *FreeCell) RemoveFromTable(card *Card) {
-	game.Table = util.RemoveAtIndex(game.Table, game.FindCardOnTable(card))
+	game.Table = RemoveCardAtIndex(game.Table, game.FindCardOnTable(card))
 }
 
 func (game *FreeCell) RemoveFromFreecell(card *Card) {
@@ -422,26 +431,26 @@ func (game *FreeCell) DrawCursor() {
 	}
 }
 
-func (game *FreeCell) CardRect(card *Card) gui.Rect {
+func (game *FreeCell) CardRect(card *Card) gr.Rect {
 	defer trace.End(trace.Begin(""))
 
-	return gui.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
+	return gr.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
 }
 
-func (game *FreeCell) TableColumnRect(idx int) gui.Rect {
+func (game *FreeCell) TableColumnRect(idx int) gr.Rect {
 	defer trace.End(trace.Begin(""))
 
-	return gui.Rect{game.TableLeft + idx*(game.TableLeft+CardWidth), game.TableTop, game.TableLeft + idx*(game.TableLeft+CardWidth) + CardWidth - 1, game.Window.Height - 1}
+	return gr.Rect{game.TableLeft + idx*(game.TableLeft+CardWidth), game.TableTop, game.TableLeft + idx*(game.TableLeft+CardWidth) + CardWidth - 1, game.Window.Height - 1}
 }
 
 func (game *FreeCell) HandleFaceInput() {
 	defer trace.End(trace.Begin(""))
 
-	mouse := gui.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
+	mouse := gr.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
 
 	/* Handle face turn. */
-	faceLeftRect := gui.Rect{0, 20, 284, 116}
-	faceRightRect := gui.Rect{348, 20, 632, 116}
+	faceLeftRect := gr.Rect{0, 20, 284, 116}
+	faceRightRect := gr.Rect{348, 20, 632, 116}
 	if faceLeftRect.Contains(mouse) {
 		game.FaceDirection = 0
 	} else if faceRightRect.Contains(mouse) {
@@ -452,7 +461,7 @@ func (game *FreeCell) HandleFaceInput() {
 func (game *FreeCell) HandleCardsInput() {
 	defer trace.End(trace.Begin(""))
 
-	mouse := gui.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
+	mouse := gr.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
 	game.Cursor = CursorDefault
 
 	for i := 0; i < len(game.FreeCells); i++ {

@@ -31,7 +31,7 @@ STARTTIME=`date +%s`
 
 case $1 in
 	'' | debug)
-		run go build -o $PROJECT -pgo off -gcflags='all=-N -l' -ldflags='-X main.BuildMode=Debug' -tags gofadebug
+		run go build -o $PROJECT -pgo off -gcflags="all=-N -l -d=checkptr=0" -ldflags='-X main.BuildMode=Debug' -tags gofadebug
 		;;
 	clean)
 		run rm -f $PROJECT $PROJECT.s $PROJECT.esc $PROJECT.test c.out cpu.pprof cpu.png mem.pprof mem.png
@@ -89,7 +89,7 @@ case $1 in
 		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=Profiling"
 		;;
 	release)
-		run go build -o $PROJECT -gcflags="-d=checkptr=0" -ldflags="-s -w"
+		run go build -o $PROJECT -gcflags="all=-d=checkptr=0" -ldflags="-s -w"
 		;;
 	test)
 		run $0 $VERBOSITYFLAGS vet
@@ -98,10 +98,10 @@ case $1 in
 	test-race-cover)
 		CGO_ENABLED=1; export CGO_ENABLED
 		run $0 $VERBOSITYFLAGS vet
-		run go test $VERBOSITYFLAGS -c -o $PROJECT.test -vet=off -race -cover -gcflags='all=-N -l'
+		run go test $VERBOSITYFLAGS -c -o $PROJECT.test -vet=off -race -cover -gcflags="all=-N -l -d=checkptr=0"
 		;;
 	tracing)
-		run go build -o $PROJECT -ldflags="-s -w -X main.BuildMode=Tracing" -tags gofatrace
+		run go build -o $PROJECT -gcflags="all=-d=checkptr=0" -ldflags="-s -w -X main.BuildMode=Tracing" -tags gofatrace
 		;;
 	vet)
 		run go vet $VERBOSITYFLAGS -asmdecl -assign -atomic -bools -buildtag -cgocall -copylocks -directive -errorsas -framepointer -httpresponse -ifaceassert -loopclosure -lostcancel -nilfunc -printf -shift -sigchanyzer -slog -stdmethods -stringintconv -structtag -testinggoroutine -tests -timeformat -unmarshal -unreachable -unusedresult

@@ -1,18 +1,18 @@
 package main
 
 import (
-	"bytes"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
 	"os"
+	"runtime"
 	"runtime/pprof"
 
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
+	"github.com/anton2920/gofa/intel"
 	"github.com/anton2920/gofa/log"
 	"github.com/anton2920/gofa/trace"
 )
@@ -27,11 +27,10 @@ const (
 
 const Title = "Classic solitaire collection"
 
-//go:embed assets/assets.png
-var AssetsData []byte
-
-var BuildMode string
-var Debug bool
+var (
+	BuildMode string
+	Debug     bool
+)
 
 var (
 	CurrentGame  GameType
@@ -82,7 +81,7 @@ func main() {
 		Debug = true
 		log.SetLevel(log.LevelDebug)
 	case "Profiling":
-		f, err := os.Create(fmt.Sprintf("solitaire-%d-cpu.pprof", os.Getpid()))
+		f, err := os.Create(fmt.Sprintf("solitaire-cpu.pprof"))
 		if err != nil {
 			log.Fatalf("Failed to create a profiling file: %v", err)
 		}
@@ -94,8 +93,13 @@ func main() {
 		trace.BeginProfile()
 		defer trace.EndAndPrintProfile()
 	}
+	log.Infof("Starting Solitaire in %q mode... (%s)", BuildMode, runtime.Version())
 
-	assetsImage, err := png.Decode(bytes.NewReader(AssetsData))
+	f, err := os.Open("assets/assets.png")
+	if err != nil {
+		log.Fatalf("Failed to load assets file: %v", err)
+	}
+	assetsImage, err := png.Decode(f)
 	if err != nil {
 		log.Fatalf("Failed to decode assets data: %v", err)
 	}
@@ -112,6 +116,9 @@ func main() {
 
 	events := make([]gui.Event, 64)
 	quit := false
+
+	var nframes int
+	start := intel.RDTSC()
 
 	for !quit {
 		for window.HasEvents() {
@@ -165,6 +172,16 @@ func main() {
 		ui.End()
 
 		renderer.Present()
+
+		nframes++
+		end := intel.RDTSC()
+		elapsed := (end - start).ToMsec()
+		if elapsed > 1000 {
+			log.Debugf("FPS: %d", nframes)
+			nframes = 0
+			start = end
+		}
+
 		window.SyncFPS(60)
 	}
 }

@@ -3,12 +3,13 @@ package main
 import (
 	"math/rand"
 
+	"github.com/anton2920/gofa/bools"
+	"github.com/anton2920/gofa/bytes"
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
 	"github.com/anton2920/gofa/slices"
 	"github.com/anton2920/gofa/trace"
-	"github.com/anton2920/gofa/util"
 )
 
 type GameState int
@@ -136,7 +137,7 @@ func (game *FreeCell) Deal(N int) {
 	n += copy(buffer[n:], Title)
 	n += copy(buffer[n:], ": FreeCell Game #")
 	n += slices.PutInt(buffer[n:], N)
-	title := util.Slice2String(buffer[:n])
+	title := bytes.AsString(buffer[:n])
 	game.Window.SetTitle(title)
 
 	game.State = GameRunning
@@ -375,7 +376,7 @@ func (game *FreeCell) GetCardPixmap(card *Card) gr.Pixmap {
 	const y = 0
 
 	i := int(card.Value - 1)
-	j := int(card.Suit-1) + int(util.Bool2Int(card.Selected)*4)
+	j := int(card.Suit-1) + int(bools.ToInt(card.Selected)*4)
 
 	return game.Assets.Sub(x+i*CardWidth, y+j*CardHeight, x+(i+1)*CardWidth, y+(j+1)*CardHeight)
 }

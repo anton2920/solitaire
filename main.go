@@ -12,7 +12,6 @@ import (
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
-	"github.com/anton2920/gofa/intel"
 	"github.com/anton2920/gofa/log"
 	"github.com/anton2920/gofa/trace"
 )
@@ -112,13 +111,11 @@ func main() {
 	defer window.Close()
 
 	renderer := gui.NewSoftwareRenderer(window)
+	// font := gr.DecompressFont(fonts.Font21)
 	ui := gui.NewUI(renderer)
 
 	events := make([]gui.Event, 64)
 	quit := false
-
-	var nframes int
-	start := intel.RDTSC()
 
 	for !quit {
 		for window.HasEvents() {
@@ -172,16 +169,6 @@ func main() {
 		ui.End()
 
 		renderer.Present()
-
-		nframes++
-		end := intel.RDTSC()
-		elapsed := (end - start).ToMsec()
-		if elapsed > 1000 {
-			log.Debugf("FPS: %d", nframes)
-			nframes = 0
-			start = end
-		}
-
 		window.SyncFPS(60)
 	}
 }

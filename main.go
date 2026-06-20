@@ -1,14 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
+	"math/rand"
 	"os"
 	"runtime"
-	"runtime/pprof"
 
+	"github.com/anton2920/gofa/debug"
 	"github.com/anton2920/gofa/gui"
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
@@ -27,11 +27,6 @@ const (
 const Title = "Classic solitaire collection"
 
 var (
-	BuildMode string
-	Debug     bool
-)
-
-var (
 	CurrentGame  GameType
 	FreeCellGame FreeCell
 )
@@ -44,13 +39,15 @@ func DrawRectWithShadow(renderer gui.Renderer, x0, y0, x1, y1 int, pclr, sclr co
 }
 
 func DrawBackButton(window *gui.Window, ui *gui.UI) {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	ui.Layout.CurrentY = window.Height - 50
 	if ui.Button(gui.ID(&CurrentGame), "Back") {
 		window.SetTitle(Title)
 		CurrentGame = GameNone
 	}
+
+	trace.End(t)
 }
 
 func DrawSolitaire(window *gui.Window, renderer gui.Renderer, ui *gui.UI) {
@@ -73,26 +70,12 @@ func Image2RGBA(src image.Image) *image.RGBA {
 }
 
 func main() {
-	switch BuildMode {
-	default:
-		BuildMode = "Release"
-	case "Debug":
-		Debug = true
-		log.SetLevel(log.LevelDebug)
-	case "Profiling":
-		f, err := os.Create(fmt.Sprintf("solitaire-cpu.pprof"))
-		if err != nil {
-			log.Fatalf("Failed to create a profiling file: %v", err)
-		}
-		defer f.Close()
+	trace.BeginProfile()
 
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	case "Tracing":
-		trace.BeginProfile()
-		defer trace.EndAndPrintProfile()
+	if debug.Debug {
+		log.SetLevel(log.LevelDebug)
 	}
-	log.Infof("Starting Solitaire in %q mode... (%s)", BuildMode, runtime.Version())
+	log.Infof("Starting Solitaire... (%s)", runtime.Version())
 
 	f, err := os.Open("assets/assets.png")
 	if err != nil {
@@ -111,12 +94,15 @@ func main() {
 	defer window.Close()
 
 	renderer := gui.NewSoftwareRenderer(window)
-	// font := gr.DecompressFont(fonts.Font21)
 	ui := gui.NewUI(renderer)
 
-	events := make([]gui.Event, 64)
-	quit := false
+	/* NOTE(anton2920); first time calling 'math.Rand()' allocates memory. */
+	_ = rand.Int()
 
+	runtime.AllocationsAreDisabled = true
+
+	events := make([]gui.Event, 64)
+	var quit bool
 	for !quit {
 		for window.HasEvents() {
 			n, err := window.GetEvents(events)
@@ -154,10 +140,9 @@ func main() {
 				CurrentGame = GameSolitaire
 			}
 			if ui.Button(gui.ID3(gui.ID(&CurrentGame)), "Play FreeCell") {
-				FreeCellGame = NewFreeCell(window, renderer, ui, &assets)
-				CurrentGame = GameFreeCell
-				// const N = 17330
+				FreeCellGame.Init(window, renderer, ui, &assets)
 				FreeCellGame.NewRandomGame()
+				CurrentGame = GameFreeCell
 			}
 		case GameSolitaire:
 			DrawSolitaire(window, renderer, ui)
@@ -171,4 +156,8 @@ func main() {
 		renderer.Present()
 		window.SyncFPS(60)
 	}
+
+	runtime.AllocationsAreDisabled = false
+	/* TODO(anton2920): remove allocations in 'trace.EndAndPrintProfile'. */
+	trace.EndAndPrintProfile()
 }

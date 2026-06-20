@@ -38,7 +38,9 @@ type FreeCell struct {
 	/* Game-related stuff. */
 	State GameState
 
-	Table     []Card
+	Table     [52]Card
+	TableUsed int
+
 	FreeCells [4]Card
 	Goals     [4]Card
 
@@ -65,15 +67,11 @@ type FreeCell struct {
 	TableColumns int
 }
 
-func NewFreeCell(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) FreeCell {
-	var game FreeCell
-
+func (game *FreeCell) Init(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *gr.Pixmap) {
 	game.Window = window
 	game.Renderer = renderer
 	game.UI = ui
 	game.Assets = assets
-
-	game.Table = make([]Card, 0, 52)
 
 	game.Width = 632
 	game.MenuHeight = 20
@@ -85,8 +83,6 @@ func NewFreeCell(window *gui.Window, renderer gui.Renderer, ui *gui.UI, assets *
 	game.TableLeft = 7
 	game.TableTop = 126
 	game.TableColumns = 8
-
-	return game
 }
 
 func (game *FreeCell) Rand() int {
@@ -95,23 +91,24 @@ func (game *FreeCell) Rand() int {
 }
 
 func (game *FreeCell) Deal(N int) {
-	game.Table = game.Table[:0]
+	game.TableUsed = 0
 	game.AutoplayAllowed = false
 	game.SelectedCard = nil
 
 	for j := King; j >= Ace; j-- {
 		for i := Aces; i >= Clubs; i-- {
-			game.Table = append(game.Table, Card{Value: j, Suit: i})
+			game.Table[game.TableUsed] = Card{Value: j, Suit: i}
+			game.TableUsed++
 		}
 	}
 
 	game.RandSeed = N
-	for i := 0; i < len(game.Table)-1; i++ {
-		j := (len(game.Table) - 1) - game.Rand()%(len(game.Table)-i)
+	for i := 0; i < game.TableUsed-1; i++ {
+		j := (game.TableUsed - 1) - game.Rand()%(game.TableUsed-i)
 		game.Table[i], game.Table[j] = game.Table[j], game.Table[i]
 	}
 
-	for k := 0; k < len(game.Table); k++ {
+	for k := 0; k < game.TableUsed; k++ {
 		card := &game.Table[k]
 
 		i := k % game.TableColumns
@@ -152,12 +149,12 @@ func (game *FreeCell) NewSelectedGame(N int) {
 }
 
 func (game *FreeCell) FindBottomCard(needle *Card) *Card {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	var bottomCard *Card
 	var bottomY int16
 
-	for i := 0; i < len(game.Table); i++ {
+	for i := 0; i < game.TableUsed; i++ {
 		card := &game.Table[i]
 		if needle.X == card.X {
 			if card.Y > bottomY {
@@ -167,11 +164,12 @@ func (game *FreeCell) FindBottomCard(needle *Card) *Card {
 		}
 	}
 
+	trace.End(t)
 	return bottomCard
 }
 
 func (game *FreeCell) AllowedToMove(onTable bool) int {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	var freecells, columns uint
 	for i := 0; i < len(game.FreeCells); i++ {
@@ -188,13 +186,16 @@ func (game *FreeCell) AllowedToMove(onTable bool) int {
 	if onTable {
 		columns--
 	}
+
+	trace.End(t)
 	return int((freecells + 1) * (1 << columns))
 }
 
 func (game *FreeCell) PowerMove(src *Card, dst *Card, pressed bool) bool {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	if (!game.CardOnTable(src)) || (!game.CardOnTable(dst)) {
+		trace.End(t)
 		return false
 	}
 
@@ -224,13 +225,16 @@ func (game *FreeCell) PowerMove(src *Card, dst *Card, pressed bool) bool {
 			}
 		}
 	}
+
+	trace.End(t)
 	return canPowerMove
 }
 
 func (game *FreeCell) PowerMoveOnTable(src *Card, idx int, pressed bool) bool {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	if !game.CardOnTable(src) {
+		trace.End(t)
 		return false
 	}
 
@@ -254,27 +258,36 @@ func (game *FreeCell) PowerMoveOnTable(src *Card, idx int, pressed bool) bool {
 			dstY += CardYPadding
 		}
 	}
-	return len(cards) > 1
 
+	trace.End(t)
+	return len(cards) > 1
 }
 
 func (game *FreeCell) FindCardAbove(card *Card) *Card {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
-	for i := 0; i < len(game.Table); i++ {
+	for i := 0; i < game.TableUsed; i++ {
 		if (game.Table[i].X == card.X) && (game.Table[i].Y == card.Y-CardYPadding) {
+			trace.End(t)
 			return &game.Table[i]
 		}
 	}
+
+	trace.End(t)
 	return nil
 }
 
 func (game *FreeCell) FindCardOnTable(card *Card) int {
-	for i := 0; i < len(game.Table); i++ {
+	t := trace.Begin("")
+
+	for i := 0; i < game.TableUsed; i++ {
 		if &game.Table[i] == card {
+			trace.End(t)
 			return i
 		}
 	}
+
+	trace.End(t)
 	return -1
 }
 
@@ -282,18 +295,12 @@ func (game *FreeCell) CardOnTable(card *Card) bool {
 	return game.FindCardOnTable(card) != -1
 }
 
-func RemoveCardAtIndex(vs []Card, i int) []Card {
-	if (len(vs) == 0) || (i < 0) || (i >= len(vs)) {
-		return vs
-	}
-	if i < len(vs)-1 {
-		copy(vs[i:], vs[i+1:])
-	}
-	return vs[:len(vs)-1]
-}
-
 func (game *FreeCell) RemoveFromTable(card *Card) {
-	game.Table = RemoveCardAtIndex(game.Table, game.FindCardOnTable(card))
+	idx := game.FindCardOnTable(card)
+	if (idx >= 0) && (idx < game.TableUsed) {
+		copy(game.Table[idx:], game.Table[idx+1:])
+		game.TableUsed--
+	}
 }
 
 func (game *FreeCell) RemoveFromFreecell(card *Card) {
@@ -332,16 +339,17 @@ func (game *FreeCell) MoveCard(src, dst *Card) {
 }
 
 func (game *FreeCell) DrawMenu() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	game.Renderer.RenderSolidRectWH(0, 0, game.Width, game.MenuHeight, color.RGB(0xD4, 0xD0, 0xC8))
+
+	trace.End(t)
 }
 
 func (game *FreeCell) DrawBackground() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	game.Renderer.Clear(color.RGB(0, 127, 0))
-
 	for i := 0; i < len(game.FreeCells); i++ {
 		x := i * game.PlaceholderWidth
 		y := game.PlaceholderTop
@@ -349,28 +357,33 @@ func (game *FreeCell) DrawBackground() {
 		DrawRectWithShadow(game.Renderer, x, y, x+game.PlaceholderWidth-1, y+game.PlaceholderHeight-1, color.Black, color.Green)
 		DrawRectWithShadow(game.Renderer, game.Width-game.PlaceholderWidth-x, y, game.Width-x-1, y+game.PlaceholderHeight-1, color.Black, color.Green)
 	}
-
 	DrawRectWithShadow(game.Renderer, 297, 38, 334, 75, color.Green, color.Black)
+
+	trace.End(t)
 }
 
 func (game *FreeCell) DrawFace() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	const x = 298
 	const y = 39
 	const width = 36
 	game.Renderer.RenderPixmap(game.Assets.Sub(320+int(width*game.FaceDirection), 453, 355+int(width*game.FaceDirection), 488), x, y)
+
+	trace.End(t)
 }
 
 func (game *FreeCell) DrawGiantFace() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	game.Renderer.RenderPixmap(game.Assets.Sub(0, 453, 320, 773), 10, 126)
+
+	trace.End(t)
 }
 
 /* TODO(anton2929): store it with card? */
 func (game *FreeCell) GetCardPixmap(card *Card) gr.Pixmap {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	const x = 632
 	const y = 0
@@ -378,19 +391,24 @@ func (game *FreeCell) GetCardPixmap(card *Card) gr.Pixmap {
 	i := int(card.Value - 1)
 	j := int(card.Suit-1) + int(bools.ToInt(card.Selected)*4)
 
-	return game.Assets.Sub(x+i*CardWidth, y+j*CardHeight, x+(i+1)*CardWidth, y+(j+1)*CardHeight)
+	px := game.Assets.Sub(x+i*CardWidth, y+j*CardHeight, x+(i+1)*CardWidth, y+(j+1)*CardHeight)
+
+	trace.End(t)
+	return px
 }
 
 func (game *FreeCell) DrawCard(card *Card) {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	if card.Suit != Blank {
 		game.Renderer.RenderPixmap(game.GetCardPixmap(card), int(card.X), int(card.Y))
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) DrawCards() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	const marginLeft = 7
 	const marginTop = 126
@@ -398,7 +416,7 @@ func (game *FreeCell) DrawCards() {
 	const paddingLeft = marginLeft
 	const paddingTop = CardYPadding
 
-	for i := 0; i < len(game.Table); i++ {
+	for i := 0; i < game.TableUsed; i++ {
 		game.DrawCard(&game.Table[i])
 	}
 
@@ -409,10 +427,12 @@ func (game *FreeCell) DrawCards() {
 	for i := 0; i < len(game.Goals); i++ {
 		game.DrawCard(&game.Goals[i])
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) DrawCursor() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	switch game.Cursor {
 	case CursorDefault:
@@ -430,22 +450,30 @@ func (game *FreeCell) DrawCursor() {
 		game.Renderer.RenderPixmap(game.Assets.Sub(392, 453, 406, 480), game.UI.MouseX, game.UI.MouseY-27)
 		game.Assets.Alpha = old
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) CardRect(card *Card) gr.Rect {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
-	return gr.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
+	r := gr.Rect{int(card.X), int(card.Y), int(card.X) + CardWidth - 1, int(card.Y) + CardHeight - 1}
+
+	trace.End(t)
+	return r
 }
 
 func (game *FreeCell) TableColumnRect(idx int) gr.Rect {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
-	return gr.Rect{game.TableLeft + idx*(game.TableLeft+CardWidth), game.TableTop, game.TableLeft + idx*(game.TableLeft+CardWidth) + CardWidth - 1, game.Window.Height - 1}
+	r := gr.Rect{game.TableLeft + idx*(game.TableLeft+CardWidth), game.TableTop, game.TableLeft + idx*(game.TableLeft+CardWidth) + CardWidth - 1, game.Window.Height - 1}
+
+	trace.End(t)
+	return r
 }
 
 func (game *FreeCell) HandleFaceInput() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	mouse := gr.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
 
@@ -457,10 +485,12 @@ func (game *FreeCell) HandleFaceInput() {
 	} else if faceRightRect.Contains(mouse) {
 		game.FaceDirection = 1
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) HandleCardsInput() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	mouse := gr.Rect{game.UI.MouseX, game.UI.MouseY, game.UI.MouseX, game.UI.MouseY}
 	game.Cursor = CursorDefault
@@ -532,7 +562,8 @@ func (game *FreeCell) HandleCardsInput() {
 						game.SelectedCard.X = bottomCard.X
 						game.SelectedCard.Y = bottomCard.Y + CardYPadding
 						if !game.CardOnTable(game.SelectedCard) {
-							game.Table = append(game.Table, *game.SelectedCard)
+							game.Table[game.TableUsed] = *game.SelectedCard
+							game.TableUsed++
 							game.RemoveFromFreecell(game.SelectedCard)
 						}
 						game.RemoveSelection()
@@ -551,7 +582,8 @@ func (game *FreeCell) HandleCardsInput() {
 						game.SelectedCard.X = int16(columnRect.X0)
 						game.SelectedCard.Y = int16(columnRect.Y0)
 						if !game.CardOnTable(game.SelectedCard) {
-							game.Table = append(game.Table, *game.SelectedCard)
+							game.Table[game.TableUsed] = *game.SelectedCard
+							game.TableUsed++
 							game.RemoveFromFreecell(game.SelectedCard)
 						}
 						game.RemoveSelection()
@@ -560,15 +592,17 @@ func (game *FreeCell) HandleCardsInput() {
 			}
 		}
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) RemoveCardIfUseless(card *Card) bool {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	if (card != nil) && (card.Suit != Blank) {
 		useless := true
 
-		for i := 0; i < len(game.Table); i++ {
+		for i := 0; i < game.TableUsed; i++ {
 			if (game.Table[i].Value >= Two) && (CanMove(&game.Table[i], card)) {
 				useless = false
 				break
@@ -588,17 +622,20 @@ func (game *FreeCell) RemoveCardIfUseless(card *Card) bool {
 					game.MoveCard(card, goal)
 					game.RemoveFromFreecell(card)
 					game.RemoveFromTable(card)
+
+					trace.End(t)
 					return true
 				}
 			}
 		}
 	}
 
+	trace.End(t)
 	return false
 }
 
 func (game *FreeCell) Autoplay() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	removed := true && game.AutoplayAllowed
 	for removed {
@@ -613,22 +650,26 @@ func (game *FreeCell) Autoplay() {
 			removed = game.RemoveCardIfUseless(&game.FreeCells[i]) || removed
 		}
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) SortCards() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
-	for i := 1; i < len(game.Table); i++ {
+	for i := 1; i < game.TableUsed; i++ {
 		for j := 0; j < i; j++ {
 			if game.Table[j].Y > game.Table[i].Y {
 				game.Table[i], game.Table[j] = game.Table[j], game.Table[i]
 			}
 		}
 	}
+
+	trace.End(t)
 }
 
 func (game *FreeCell) GameWon() bool {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	var kings int
 	for i := 0; i < len(game.Goals); i++ {
@@ -636,16 +677,18 @@ func (game *FreeCell) GameWon() bool {
 			kings++
 		}
 	}
+
+	trace.End(t)
 	return kings == 4
 }
 
 func (game *FreeCell) UpdateAndRender() {
-	defer trace.End(trace.Begin(""))
+	t := trace.Begin("")
 
 	game.HandleFaceInput()
 
 	if game.UI.MiddleDown {
-		game.Table = game.Table[:0]
+		game.TableUsed = 0
 
 		for i := 0; i < len(game.FreeCells); i++ {
 			freeCell := &game.FreeCells[i]
@@ -680,4 +723,6 @@ func (game *FreeCell) UpdateAndRender() {
 	}
 	game.DrawCursor()
 	game.DrawMenu()
+
+	trace.End(t)
 }

@@ -13,7 +13,9 @@ import (
 	"github.com/anton2920/gofa/gui/color"
 	"github.com/anton2920/gofa/gui/gr"
 	"github.com/anton2920/gofa/log"
+	_ "github.com/anton2920/gofa/time_"
 	"github.com/anton2920/gofa/trace"
+	"github.com/anton2920/gofa/trace_"
 )
 
 type GameType int
@@ -158,6 +160,5 @@ func main() {
 	}
 
 	runtime.AllocationsAreDisabled = false
-	/* TODO(anton2920): remove allocations in 'trace.EndAndPrintProfile'. */
-	trace.EndAndPrintProfile()
+	trace_.EndAndPrintProfile()
 }
